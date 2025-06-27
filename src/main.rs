@@ -3,6 +3,9 @@ use scraper::{Html, Selector};
 use std::time::{Duration, Instant};
 use url::Url;
 
+mod pg;
+use pg::conn::{establish_connection, save_url_to_db};
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -20,9 +23,9 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("Starting crawler at: {}", &args.url);
 
     let client = reqwest::Client::new();
-    let html_content = fetch_html(&client, &args.url).await?;
+    let initial_html_content = fetch_html(&client, &args.url).await?;
     let mut visited_links: Vec<String> = Vec::new();
-    let initial_links = extract_links(&html_content, &args.url, &visited_links)?;
+    let initial_links = extract_links(&initial_html_content, &args.url, &visited_links)?;
     let mut unvisited_links: Vec<String> = initial_links;
     let mut unsuccessful_links: Vec<String> = Vec::new();
 
@@ -59,6 +62,22 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         println!("{}. {}", i + 1, url);
     }
 
+    let pool = establish_connection().await?;
+    let mut num_saved: u32 = 0;
+    println!("Writing visited links to database...");
+    while let Some(url) = visited_links.pop() {
+        match save_url_to_db(&pool, url).await {
+            Ok(_) => {
+                num_saved = num_saved + 1;
+            }
+            Err(e) => {
+                println!("Error saving to DB: {:?}", e);
+            }
+        }
+    }
+
+    println!("Saved {} rows to urls table", num_saved);
+
     Ok(())
 }
 
@@ -88,7 +107,9 @@ fn extract_links(
                 Ok(absolute_url) => {
                     let url_string = absolute_url.to_string();
                     if !links.contains(&url_string) && !visited_links.contains(&url_string) {
-                        links.push(url_string);
+                        if valid_https(&url_string) {
+                            links.push(url_string);
+                        }
                     }
                 }
                 Err(_) => {
@@ -99,4 +120,20 @@ fn extract_links(
     }
 
     Ok(links)
+}
+
+fn valid_https(url_string: &str) -> bool {
+    match Url::parse(url_string) {
+        Ok(url) => {
+            if url.scheme() != "https" {
+                return false;
+            }
+
+            match url.host_str() {
+                Some(host) => host.contains('.'),
+                None => false,
+            }
+        }
+        Err(_) => false,
+    }
 }

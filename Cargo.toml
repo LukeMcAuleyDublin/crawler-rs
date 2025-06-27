@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
+dotenv = "0.15.0"
 reqwest = "0.12.20"
 scraper = "0.23.1"
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres"] }
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 url = "2.5.4"
