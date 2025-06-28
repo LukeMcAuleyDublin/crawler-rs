@@ -1,12 +1,10 @@
 use clap::Parser;
-use std::time::{Duration, Instant};
+// use std::time::{Duration, Instant};
 
+mod crawler;
 mod parser;
 mod pg;
-
-use parser::links::LinkCollection;
-
-use pg::conn::establish_connection;
+use crawler::crawler::Crawler;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -21,24 +19,14 @@ struct Args {
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    let initial_url: String = String::from(&args.url);
-    let timeout_duration = Duration::from_secs(args.seconds);
-    let start_time = Instant::now();
+    let initial_url = String::from(&args.url);
 
-    let pool = establish_connection().await?;
-    let client = reqwest::Client::new();
-    let mut link_collection = LinkCollection {
-        db_conn: pool,
-        http_client: client,
-        visited_links: vec![],
-        unvisited_links: vec![],
-        start_point_url: initial_url,
-    };
-
-    match link_collection.crawl().await {
-        Ok(_) => return Ok(()),
+    match Crawler::new(initial_url, false).await {
+        Ok(mut crawler) => {
+            crawler.crawl().await;
+        }
         Err(e) => {
-            println!("Error! {}", e);
+            println!("ERROR! SAD! :( : {}", e);
         }
     }
 

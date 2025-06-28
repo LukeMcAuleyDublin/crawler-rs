@@ -2,28 +2,27 @@ use scraper::{Html, Selector};
 use sqlx::PgPool;
 use url::Url;
 
+#[derive(Debug)]
 pub struct LinkCollection {
-    pub db_conn: PgPool,
-    pub http_client: reqwest::Client,
     pub visited_links: Vec<Link>,
     pub unvisited_links: Vec<Link>,
-    pub start_point_url: String,
 }
 
 impl LinkCollection {
-    pub async fn crawl(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let initial_link = Link {
-            address: String::from(&self.start_point_url),
-            visited: false,
-        };
-
-        self.add_to_unvisited_links(initial_link);
+    pub fn new(start_point_url: String) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            visited_links: Vec::new(),
+            unvisited_links: vec![Link::new(start_point_url)],
+        })
+    }
+    pub async fn crawl(
+        &mut self,
+        client: &reqwest::Client,
+        db_conn: &PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         while let Some(mut link) = self.unvisited_links.pop() {
             println!("Crawling {}", &link.address);
-            match link
-                .extract_links(&self.http_client, &self.visited_links)
-                .await
-            {
+            match link.extract_links(client, &self.visited_links).await {
                 Ok(extracted_links) => {
                     for (_i, url) in extracted_links.iter().enumerate() {
                         self.add_to_unvisited_links(Link {
@@ -32,7 +31,7 @@ impl LinkCollection {
                         });
                     }
                     self.add_to_visited_links(link.clone());
-                    self.save_link(link).await;
+                    self.save_link(link, db_conn).await;
                 }
                 Err(e) => {
                     println!("Error while extracting links: {:?}", e);
@@ -50,25 +49,31 @@ impl LinkCollection {
         self.unvisited_links.push(link)
     }
 
-    pub async fn save_link(&self, link: Link) {
-        match link.save(&self.db_conn).await {
+    pub async fn save_link(&self, link: Link, db_conn: &PgPool) {
+        match link.save(db_conn).await {
             Ok(_) => {
                 println!("Successfully saved: {}", &link.address);
             }
             Err(e) => {
-                println!("Error while saving: {}", &link.address);
+                println!("Error while saving: {}\nError: {}", &link.address, e);
             }
         }
     }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Link {
     pub address: String,
     pub visited: bool,
 }
 
 impl Link {
+    pub fn new(address: String) -> Self {
+        Self {
+            address: address,
+            visited: false,
+        }
+    }
     async fn fetch_html(
         &self,
         client: &reqwest::Client,
