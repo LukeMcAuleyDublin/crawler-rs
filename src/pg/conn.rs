@@ -17,12 +17,3 @@ pub async fn establish_connection() -> std::result::Result<PgPool, Box<dyn std::
 
     Ok(pool)
 }
-
-pub async fn save_url_to_db(pool: &PgPool, url: String) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT INTO urls (address) VALUES ($1)")
-        .bind(url)
-        .execute(pool)
-        .await?;
-
-    Ok(())
-}
