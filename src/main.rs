@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{ArgAction, Parser};
 // use std::time::{Duration, Instant};
 
 mod crawler;
@@ -12,6 +12,9 @@ struct Args {
     #[arg(short, long)]
     url: String,
 
+    #[arg(short, long, action = ArgAction::SetTrue)]
+    restrict_domain: bool,
+
     #[arg(short, long, default_value = "30")]
     seconds: u64,
 }
@@ -20,8 +23,9 @@ struct Args {
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let initial_url = String::from(&args.url);
+    let restrict_domain = args.restrict_domain;
 
-    match Crawler::new(initial_url, false).await {
+    match Crawler::new(initial_url, restrict_domain).await {
         Ok(mut crawler) => {
             crawler.crawl().await;
         }

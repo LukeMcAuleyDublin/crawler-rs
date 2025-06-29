@@ -1,18 +1,24 @@
 use scraper::{Html, Selector};
 use sqlx::PgPool;
+use tokio::time::error::Elapsed;
 use url::Url;
 
 #[derive(Debug)]
 pub struct LinkCollection {
     pub visited_links: Vec<Link>,
     pub unvisited_links: Vec<Link>,
+    pub restrict_domain: bool,
 }
 
 impl LinkCollection {
-    pub fn new(start_point_url: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        start_point_url: String,
+        stay_on_domain: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             visited_links: Vec::new(),
             unvisited_links: vec![Link::new(start_point_url)],
+            restrict_domain: stay_on_domain,
         })
     }
     pub async fn crawl(
@@ -25,10 +31,22 @@ impl LinkCollection {
             match link.extract_links(client, &self.visited_links).await {
                 Ok(extracted_links) => {
                     for (_i, url) in extracted_links.iter().enumerate() {
-                        self.add_to_unvisited_links(Link {
-                            address: String::from(url),
-                            visited: false,
-                        });
+                        match self.restrict_domain {
+                            true => {
+                                if self.url_in_domain(&link.address, url).unwrap() {
+                                    self.add_to_unvisited_links(Link {
+                                        address: String::from(url),
+                                        visited: false,
+                                    });
+                                }
+                            }
+                            _ => {
+                                self.add_to_unvisited_links(Link {
+                                    address: String::from(url),
+                                    visited: false,
+                                });
+                            }
+                        }
                     }
                     self.add_to_visited_links(link.clone());
                     self.save_link(link, db_conn).await;
@@ -58,6 +76,13 @@ impl LinkCollection {
                 println!("Error while saving: {}\nError: {}", &link.address, e);
             }
         }
+    }
+
+    pub fn url_in_domain(&self, link: &str, new_link: &str) -> Result<bool, url::ParseError> {
+        let parsed_link = Url::parse(link).unwrap();
+        let parsed_new_link = Url::parse(new_link).unwrap();
+
+        Ok(parsed_link.domain() == parsed_new_link.domain())
     }
 }
 
