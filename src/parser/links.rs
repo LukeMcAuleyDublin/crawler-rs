@@ -22,7 +22,7 @@ impl LinkCollection {
             visited_links: Vec::new(),
             unvisited_links: vec![Link::new(start_point_url)],
             restrict_domain,
-            logger: Logger::new(String::from("crawler.links"), Color::Blue),
+            logger: Logger::new(String::from("crawler.link_collection"), Color::Blue),
         })
     }
     pub async fn crawl(
@@ -32,8 +32,8 @@ impl LinkCollection {
     ) -> Result<(), Box<dyn std::error::Error>> {
         while let Some(mut link) = self.unvisited_links.pop() {
             self.logger.log(Message {
-                text: format!("crawling {}", &link.address),
-                color: Color::DarkMagenta,
+                text: format!("Crawling {}", &link.address),
+                color: Color::DarkGreen,
             })?;
             match link.extract_links(client, &self.visited_links).await {
                 Ok(extracted_links) => {
@@ -86,7 +86,7 @@ impl LinkCollection {
             Err(e) => {
                 self.logger.log(Message {
                     text: format!("Error while saving: {}\nError: {}", &link.address, e),
-                    color: Color::Green,
+                    color: Color::DarkRed,
                 })?;
             }
         }
@@ -114,7 +114,7 @@ impl Link {
         Self {
             address,
             visited: false,
-            logger: Logger::new(String::from("crawler.link"), Color::DarkGreen),
+            logger: Logger::new(String::from("crawler.link"), Color::DarkBlue),
         }
     }
     async fn fetch_html(
@@ -123,7 +123,7 @@ impl Link {
     ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         self.logger.log(Message {
             text: format!("Fetching {}", &self.address),
-            color: Color::DarkYellow,
+            color: Color::DarkCyan,
         })?;
         let response = client.get(&self.address).send().await?.text().await?;
 

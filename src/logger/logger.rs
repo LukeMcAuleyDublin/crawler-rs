@@ -21,12 +21,13 @@ impl Logger {
         Logger {
             prefix,
             color,
-            width: 20,
+            width: 30,
         }
     }
 
     pub fn log(&self, message: Message) -> Result<(), std::io::Error> {
-        let formatted_prefix = format!("[{:>width$}]", self.prefix, width = self.width - 2);
+        let prefix = format!("[{}]", self.prefix);
+        let formatted_prefix = format!("{:>width$}", prefix, width = self.width - 2);
         let formatted_message = format!(" {}\n", message.text);
 
         execute!(

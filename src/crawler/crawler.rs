@@ -20,7 +20,7 @@ impl Crawler {
         Ok(Self {
             services: AppServices::new().await?,
             link_collection: collection,
-            logger: Logger::new(String::from("crawler.crawler"), Color::Yellow),
+            logger: Logger::new(String::from("crawler.crawler"), Color::DarkMagenta),
         })
     }
     pub async fn crawl(&mut self) -> std::io::Result<()> {
