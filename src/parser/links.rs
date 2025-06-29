@@ -1,24 +1,28 @@
 use scraper::{Html, Selector};
 use sqlx::PgPool;
-use tokio::time::error::Elapsed;
 use url::Url;
+
+use crate::logger::logger::{Logger, Message};
+use crossterm::style::Color;
 
 #[derive(Debug)]
 pub struct LinkCollection {
     pub visited_links: Vec<Link>,
     pub unvisited_links: Vec<Link>,
     pub restrict_domain: bool,
+    pub logger: Logger,
 }
 
 impl LinkCollection {
     pub fn new(
         start_point_url: String,
-        stay_on_domain: bool,
+        restrict_domain: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             visited_links: Vec::new(),
             unvisited_links: vec![Link::new(start_point_url)],
-            restrict_domain: stay_on_domain,
+            restrict_domain,
+            logger: Logger::new(String::from("crawler.links"), Color::Blue),
         })
     }
     pub async fn crawl(
@@ -27,32 +31,32 @@ impl LinkCollection {
         db_conn: &PgPool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         while let Some(mut link) = self.unvisited_links.pop() {
-            println!("Crawling {}", &link.address);
+            self.logger.log(Message {
+                text: format!("crawling {}", &link.address),
+                color: Color::DarkMagenta,
+            })?;
             match link.extract_links(client, &self.visited_links).await {
                 Ok(extracted_links) => {
                     for (_i, url) in extracted_links.iter().enumerate() {
                         match self.restrict_domain {
                             true => {
                                 if self.url_in_domain(&link.address, url).unwrap() {
-                                    self.add_to_unvisited_links(Link {
-                                        address: String::from(url),
-                                        visited: false,
-                                    });
+                                    self.add_to_unvisited_links(Link::new(String::from(url)));
                                 }
                             }
                             _ => {
-                                self.add_to_unvisited_links(Link {
-                                    address: String::from(url),
-                                    visited: false,
-                                });
+                                self.add_to_unvisited_links(Link::new(String::from(url)));
                             }
                         }
                     }
                     self.add_to_visited_links(link.clone());
-                    self.save_link(link, db_conn).await;
+                    self.save_link(link, db_conn).await?;
                 }
                 Err(e) => {
-                    println!("Error while extracting links: {:?}", e);
+                    self.logger.log(Message {
+                        text: format!("Error while extracting links: {:?}", e),
+                        color: Color::Red,
+                    })?;
                 }
             }
         }
@@ -67,15 +71,27 @@ impl LinkCollection {
         self.unvisited_links.push(link)
     }
 
-    pub async fn save_link(&self, link: Link, db_conn: &PgPool) {
+    pub async fn save_link(
+        &self,
+        link: Link,
+        db_conn: &PgPool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match link.save(db_conn).await {
             Ok(_) => {
-                println!("Successfully saved: {}", &link.address);
+                self.logger.log(Message {
+                    text: format!("Successfully saved: {}", &link.address),
+                    color: Color::Green,
+                })?;
             }
             Err(e) => {
-                println!("Error while saving: {}\nError: {}", &link.address, e);
+                self.logger.log(Message {
+                    text: format!("Error while saving: {}\nError: {}", &link.address, e),
+                    color: Color::Green,
+                })?;
             }
         }
+
+        Ok(())
     }
 
     pub fn url_in_domain(&self, link: &str, new_link: &str) -> Result<bool, url::ParseError> {
@@ -90,20 +106,25 @@ impl LinkCollection {
 pub struct Link {
     pub address: String,
     pub visited: bool,
+    pub logger: Logger,
 }
 
 impl Link {
     pub fn new(address: String) -> Self {
         Self {
-            address: address,
+            address,
             visited: false,
+            logger: Logger::new(String::from("crawler.link"), Color::DarkGreen),
         }
     }
     async fn fetch_html(
         &self,
         client: &reqwest::Client,
     ) -> std::result::Result<String, Box<dyn std::error::Error>> {
-        println!("Fetching {}", &self.address);
+        self.logger.log(Message {
+            text: format!("Fetching {}", &self.address),
+            color: Color::DarkYellow,
+        })?;
         let response = client.get(&self.address).send().await?.text().await?;
 
         Ok(response)
@@ -133,9 +154,10 @@ impl Link {
                             }
                         }
                     }
-                    Err(_) => {
-                        println!("Skipping invalid URL: {}", href);
-                    }
+                    Err(_) => self.logger.log(Message {
+                        text: format!("Skipping invalid URL: {}", href),
+                        color: Color::DarkRed,
+                    })?,
                 }
             }
         }
@@ -162,10 +184,20 @@ impl Link {
     }
 
     pub async fn save(&self, db_conn: &PgPool) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO urls (address) VALUES ($1)")
+        match sqlx::query("INSERT INTO urls (address) VALUES ($1)")
             .bind(&self.address)
             .execute(db_conn)
-            .await?;
+            .await
+        {
+            Ok(_) => self.logger.log(Message {
+                text: String::from("Successfully added row to DB"),
+                color: Color::DarkGreen,
+            })?,
+            Err(e) => self.logger.log(Message {
+                text: format!("Error when writing to DB: {}", e),
+                color: Color::DarkRed,
+            })?,
+        }
 
         Ok(())
     }

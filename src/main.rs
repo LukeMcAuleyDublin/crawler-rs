@@ -1,7 +1,7 @@
 use clap::{ArgAction, Parser};
-// use std::time::{Duration, Instant};
 
 mod crawler;
+mod logger;
 mod parser;
 mod pg;
 use crawler::crawler::Crawler;
@@ -27,10 +27,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     match Crawler::new(initial_url, restrict_domain).await {
         Ok(mut crawler) => {
-            crawler.crawl().await;
+            crawler.crawl().await?;
         }
         Err(e) => {
-            println!("ERROR! SAD! :( : {}", e);
+            println!("BIG ERROR: {}", e);
         }
     }
 
